@@ -319,20 +319,14 @@ def load_more_recommendations(page, per_page=5):
 # ============================
 # Fungsi Pencarian Anime berdasarkan Judul
 # ============================
-def search_anime_by_title(query):
-    search_url = f"https://api.jikan.moe/v4/anime?q={query}&page=1"
-    response = requests.get(search_url)
-    if response.status_code != 200:
+def search_anime_by_title(title):
+    url = f"https://api.jikan.moe/v4/anime?q={title}&limit=10"
+    response = requests.get(url)
+    if response.status_code == 200:
+        results = response.json().get("data", [])
+        return [{"mal_id": anime["mal_id"], "title": anime["title"]} for anime in results]
+    else:
         return []
-
-    results = response.json().get("data", [])
-    anime_list = []
-    for anime in results:
-        anime_list.append({
-            "title": anime["title"],
-            "mal_id": anime["mal_id"]
-        })
-    return anime_list
 
 # ============================
 # Streamlit UI
@@ -347,6 +341,7 @@ st.markdown(
     "**Contoh ID:** 5114 (Fullmetal Alchemist: Brotherhood), 9253 (Steins;Gate)"
 )
 
+# Input judul anime
 query_input = st.text_input("Cari anime berdasarkan judul", "")
 
 if query_input.strip():
@@ -355,8 +350,12 @@ if query_input.strip():
         
         if search_results:
             st.subheader("🔍 Hasil Pencarian:")
-            for result in search_results:
-                st.markdown(f"- **{result['title']}** (MAL ID: {result['mal_id']})")
+            for i, result in enumerate(search_results):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(f"- **{result['title']}**")
+                with col2:
+                    st.code(result['mal_id'], language='text')  # untuk memudahkan menyalin
         else:
             st.warning("Tidak ada anime yang ditemukan dengan judul tersebut.")
 
