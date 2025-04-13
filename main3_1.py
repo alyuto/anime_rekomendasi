@@ -317,8 +317,28 @@ def load_more_recommendations(page, per_page=5):
     return results
 
 # ============================
+# Fungsi Pencarian Anime berdasarkan Judul
+# ============================
+def search_anime_by_title(query):
+    search_url = f"https://api.jikan.moe/v4/anime?q={query}&page=1"
+    response = requests.get(search_url)
+    if response.status_code != 200:
+        return []
+
+    results = response.json().get("data", [])
+    anime_list = []
+    for anime in results:
+        anime_list.append({
+            "title": anime["title"],
+            "mal_id": anime["mal_id"]
+        })
+    return anime_list
+
+# ============================
 # Streamlit UI
 # ============================
+
+
 st.title("🎌 Rekomendasi Anime Berdasarkan MAL ID")
 st.markdown(
     "Masukkan **MAL ID** dari anime yang ingin kamu cari rekomendasinya.\n\n"
@@ -326,6 +346,19 @@ st.markdown(
     "menggabungkannya, dan mencari anime paling mirip berdasarkan model encoder.\n\n"
     "**Contoh ID:** 5114 (Fullmetal Alchemist: Brotherhood), 9253 (Steins;Gate)"
 )
+
+query_input = st.text_input("Cari anime berdasarkan judul", "")
+
+if query_input.strip():
+    with st.spinner("Mencari anime..."):
+        search_results = search_anime_by_title(query_input)
+        
+        if search_results:
+            st.subheader("🔍 Hasil Pencarian:")
+            for result in search_results:
+                st.markdown(f"- **{result['title']}** (MAL ID: {result['mal_id']})")
+        else:
+            st.warning("Tidak ada anime yang ditemukan dengan judul tersebut.")
 
 mal_id_input = st.text_input("Masukkan MAL ID anime", "")
 
@@ -369,7 +402,7 @@ if mal_id_input.strip().isdigit():
                     with col1:
                         st.image(rec["image"], width=150)
                     with col2:
-                        st.markdown(f"⭐ **Rating:** {rec['score']} &nbsp;&nbsp;&nbsp; 🔁 **Kemiripan:** {rec['similarity']}%")
+                        st.markdown(f"⭐ **Rating:** {rec['score']:.2f} &nbsp;&nbsp;&nbsp; 🔁 **Kemiripan:** {rec['similarity']}%")
                         st.markdown(f"**Studio:** {rec['studio']}")
                         st.markdown(f"**Genre:** {', '.join(rec['genres'])}")
                         st.markdown(f"**Peringkat:** {rec['rank']}")
