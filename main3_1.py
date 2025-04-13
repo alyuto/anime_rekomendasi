@@ -1,15 +1,14 @@
 """
-PAKAI INI UNTUK REKOMENDASINYA TAPI PERBARUI LAGI TAMPILANNYA
-
-COBA PAKAI LATIHANNYA HANYA SYNOPSIS
+REKOMENDASI BERDASARKAN DATASET LOKAL - FIXED VERSION
 """
 import streamlit as st
-import requests
 import numpy as np
 import re
 import unicodedata
 import pickle
 import ast
+import requests
+import pandas as pd
 from keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from sklearn.metrics.pairwise import cosine_similarity
@@ -21,10 +20,11 @@ import time
 st.set_page_config(page_title="Anime Recommender", layout="centered")
 
 # ============================
-# Load Model dan Encoder
+# Load Dataset dan Model
 # ============================
 @st.cache_resource
 def load_resources():
+    # Load model dan encoder
     encoder_model = load_model("anime_encoder_model.h5")
     with open("tokenizer.pkl", "rb") as f:
         tokenizer_ = pickle.load(f)
@@ -32,9 +32,24 @@ def load_resources():
         studio_enc = pickle.load(f)
     with open("genre_list.txt", "r") as f:
         genre_lst = [line.strip().lower() for line in f.readlines()]
-    return encoder_model, tokenizer_, studio_enc, genre_lst
+    
+    # Load dataset lokal
+    anime_df = pd.read_csv("anime_full_dataset_cleaned.csv")
+    
+    # Konversi kolom yang perlu diubah
+    def safe_literal_eval(x):
+        try:
+            return ast.literal_eval(x) if pd.notna(x) and isinstance(x, str) else []
+        except:
+            return []
+    
+    anime_df['genres'] = anime_df['genres'].apply(safe_literal_eval)
+    anime_df['studios'] = anime_df['studios'].apply(safe_literal_eval)
+    anime_df['streaming_platforms'] = anime_df['streaming_platforms'].apply(safe_literal_eval)
+    
+    return encoder_model, tokenizer_, studio_enc, genre_lst, anime_df
 
-encoder, tokenizer, studio_encoder, genre_list = load_resources()
+encoder, tokenizer, studio_encoder, genre_list, anime_data = load_resources()
 MAX_SEQ_LEN = 1000
 
 # ============================
@@ -46,7 +61,7 @@ def clean_text(text):
     text = re.sub(r'\[.*?\]', ' ', text)
     text = re.sub(r'\(.*?\)', ' ', text)
     text = re.sub(r'story: \d+\/\d+', ' ', text)
-    text = re.sub(r'[“”"’]', '"', text)
+    text = re.sub(r'[“”"]', '"', text)
     text = re.sub(r'\.\.\.+', ' ', text)
     text = re.sub(r'\d+', ' ', text)
     text = re.sub(r"[^a-zA-Z.!?'\s]", ' ', text)
@@ -55,16 +70,17 @@ def clean_text(text):
     text = unicodedata.normalize("NFKD", text)
     return text.strip()
 
-def clean_studio(s):
-    try:
-        studios = ast.literal_eval(str(s)) if isinstance(s, str) else s
-        if isinstance(studios, list) and studios:
-            return studios[0].get("name", "unknown").strip().lower()
-        elif isinstance(studios, dict):
-            return studios.get("name", "unknown").strip().lower()
-        else:
-            return "unknown"
-    except:
+def clean_studio(studios):
+    if not studios or not isinstance(studios, list):
+        return "unknown"
+    
+    # Handle case where studios is a list of dictionaries
+    if isinstance(studios[0], dict):
+        return studios[0].get("name", "unknown").strip().lower()
+    # Handle case where studios is a list of strings
+    elif isinstance(studios[0], str):
+        return studios[0].strip().lower()
+    else:
         return "unknown"
 
 # ============================
@@ -84,7 +100,7 @@ def preprocess_input(text, score, studio, genres):
     studio_cat = np.zeros((1, len(studio_encoder.classes_)))
     studio_cat[0, studio_encoded] = 1
 
-    genres = [g.strip().lower() for g in genres]
+    genres = [g.strip().lower() for g in genres] if isinstance(genres, list) else []
     genre_vector = np.zeros((1, len(genre_list)))
     for g in genres:
         if g in genre_list:
@@ -195,7 +211,6 @@ def get_top_recommendations(embedding, embeddings, info, similarity_threshold=0.
     total = min(max_results, len(sorted_indices))
     progress_bar = st.progress(0, text="Mengambil rekomendasi anime...")
 
-    # Hanya mengambil initial_results pertama untuk ditampilkan
     for i, idx in enumerate(sorted_indices[:initial_results]):
         if len(results) >= initial_results:
             break
@@ -208,49 +223,67 @@ def get_top_recommendations(embedding, embeddings, info, similarity_threshold=0.
         mal_id = anime["mal_id"]
 
         try:
-            synopsis, score, studio, genres, title = get_anime_info(mal_id)
-            detail_url = f"https://api.jikan.moe/v4/anime/{mal_id}/full"
-            detail_resp = requests.get(detail_url)
-            if detail_resp.status_code != 200:
+            # Cari data anime dari dataset lokal
+            anime_row = anime_data[anime_data['mal_id'] == mal_id]
+            if anime_row.empty:
                 continue
-            detail_data = detail_resp.json().get("data", {})
+                
+            anime_row = anime_row.iloc[0]
+            
+            title = str(anime_row['title_english']) if pd.notna(anime_row['title_english']) else str(anime_row['title'])
+            score = float(anime_row['score']) if pd.notna(anime_row['score']) else 0
+            studio = clean_studio(anime_row['studios'])
+            
+            # Handle genres
+            genres = []
+            if isinstance(anime_row['genres'], list):
+                for g in anime_row['genres']:
+                    if isinstance(g, dict):
+                        genres.append(g.get('name', '').lower())
+                    elif isinstance(g, str):
+                        genres.append(g.lower())
+            
+            synopsis = str(anime_row['synopsis']) if pd.notna(anime_row['synopsis']) else ""
+            image = str(anime_row['image_url']) if pd.notna(anime_row['image_url']) else ""
+            rank = str(anime_row['rank']) if pd.notna(anime_row['rank']) else "Tidak diketahui"
+            episodes = str(anime_row['episodes']) if pd.notna(anime_row['episodes']) else "Tidak diketahui"
+            
+            # Handle streaming platforms
+            streaming_links = []
+            if isinstance(anime_row['streaming_platforms'], list):
+                for s in anime_row['streaming_platforms']:
+                    if isinstance(s, dict):
+                        name = s.get('name', '')
+                        url = s.get('url', '')
+                        if name and url:
+                            streaming_links.append({"name": name, "url": url})
+                    elif isinstance(s, str):
+                        streaming_links.append({"name": s, "url": ""})
 
-            image = detail_data.get("images", {}).get("jpg", {}).get("image_url", "")
-            trailer_url = detail_data.get("trailer", {}).get("url")
-            rank = detail_data.get("rank", "Tidak diketahui")
-            episodes = detail_data.get("episodes", "Tidak diketahui")
-            streaming_links = [
-                {"name": stream["name"], "url": stream["url"]}
-                for stream in detail_data.get("streaming", [])
-            ]
-
-            anime_data = {
+            anime_data_rec = {
                 "title": title,
-                "score": score * 10,
+                "score": score,
                 "studio": studio,
                 "genres": genres,
                 "synopsis": synopsis,
                 "similarity": round(sim_score * 100, 2),
-                "image": image,
-                "trailer_url": trailer_url,
+                "image": image if image != "nan" else None,
+                "trailer_url": str(anime_row['trailer_url']) if pd.notna(anime_row['trailer_url']) else None,
                 "rank": rank,
                 "episodes": episodes,
                 "streaming_links": streaming_links,
                 "mal_id": mal_id
             }
 
-            results.append(anime_data)
-
-            # Update progress
-            progress_bar.progress((len(results)) / initial_results, text=f"Mengambil rekomendasi... ({len(results)}/{initial_results})")
-
-            time.sleep(0.7)  # Delay antar request untuk menghindari rate limit
+            results.append(anime_data_rec)
+            progress_bar.progress((len(results)) / initial_results, 
+                                text=f"Mengambil rekomendasi... ({len(results)}/{initial_results})")
 
         except Exception as e:
             print(f"Gagal mengambil data untuk mal_id {mal_id}: {e}")
             continue
 
-    progress_bar.empty()  # Hapus progress bar setelah selesai
+    progress_bar.empty()
     
     # Simpan semua indeks yang memenuhi syarat untuk digunakan nanti
     st.session_state.all_recommendation_indices = sorted_indices
@@ -274,40 +307,60 @@ def load_more_recommendations(page, per_page=5):
         mal_id = anime["mal_id"]
 
         try:
-            synopsis, score, studio, genres, title = get_anime_info(mal_id)
-            detail_url = f"https://api.jikan.moe/v4/anime/{mal_id}/full"
-            detail_resp = requests.get(detail_url)
-            if detail_resp.status_code != 200:
+            # Cari data anime dari dataset lokal
+            anime_row = anime_data[anime_data['mal_id'] == mal_id]
+            if anime_row.empty:
                 continue
-            detail_data = detail_resp.json().get("data", {})
+                
+            anime_row = anime_row.iloc[0]
+            
+            title = str(anime_row['title_english']) if pd.notna(anime_row['title_english']) else str(anime_row['title'])
+            score = float(anime_row['score']) if pd.notna(anime_row['score']) else 0
+            studio = clean_studio(anime_row['studios'])
+            
+            # Handle genres
+            genres = []
+            if isinstance(anime_row['genres'], list):
+                for g in anime_row['genres']:
+                    if isinstance(g, dict):
+                        genres.append(g.get('name', '').lower())
+                    elif isinstance(g, str):
+                        genres.append(g.lower())
+            
+            synopsis = str(anime_row['synopsis']) if pd.notna(anime_row['synopsis']) else ""
+            image = str(anime_row['image_url']) if pd.notna(anime_row['image_url']) else ""
+            rank = str(anime_row['rank']) if pd.notna(anime_row['rank']) else "Tidak diketahui"
+            episodes = str(anime_row['episodes']) if pd.notna(anime_row['episodes']) else "Tidak diketahui"
+            
+            # Handle streaming platforms
+            streaming_links = []
+            if isinstance(anime_row['streaming_platforms'], list):
+                for s in anime_row['streaming_platforms']:
+                    if isinstance(s, dict):
+                        name = s.get('name', '')
+                        url = s.get('url', '')
+                        if name and url:
+                            streaming_links.append({"name": name, "url": url})
+                    elif isinstance(s, str):
+                        streaming_links.append({"name": s, "url": ""})
 
-            image = detail_data.get("images", {}).get("jpg", {}).get("image_url", "")
-            trailer_url = detail_data.get("trailer", {}).get("url")
-            rank = detail_data.get("rank", "Tidak diketahui")
-            episodes = detail_data.get("episodes", "Tidak diketahui")
-            streaming_links = [
-                {"name": stream["name"], "url": stream["url"]}
-                for stream in detail_data.get("streaming", [])
-            ]
-
-            anime_data = {
+            anime_data_rec = {
                 "title": title,
-                "score": score * 10,
+                "score": score,
                 "studio": studio,
                 "genres": genres,
                 "synopsis": synopsis,
                 "similarity": round(sim_score * 100, 2),
-                "image": image,
-                "trailer_url": trailer_url,
+                "image": image if image != "nan" else None,
+                "trailer_url": str(anime_row['trailer_url']) if pd.notna(anime_row['trailer_url']) else None,
                 "rank": rank,
                 "episodes": episodes,
                 "streaming_links": streaming_links,
                 "mal_id": mal_id
             }
 
-            results.append(anime_data)
+            results.append(anime_data_rec)
             progress_bar.progress((i+1)/per_page, text=f"Memuat rekomendasi... ({i+1}/{per_page})")
-            time.sleep(0.7)
             
         except Exception as e:
             print(f"Gagal mengambil data untuk mal_id {mal_id}: {e}")
@@ -331,13 +384,10 @@ def search_anime_by_title(title):
 # ============================
 # Streamlit UI
 # ============================
-
-
 st.title("🎌 Rekomendasi Anime Berdasarkan MAL ID")
 st.markdown(
     "Masukkan **MAL ID** dari anime yang ingin kamu cari rekomendasinya.\n\n"
-    "Aplikasi ini akan mengambil data sinopsis dan review dari Jikan API,\n"
-    "menggabungkannya, dan mencari anime paling mirip berdasarkan model encoder.\n\n"
+    "Aplikasi ini akan menggunakan dataset lokal untuk mencari rekomendasi anime yang mirip.\n\n"
     "**Contoh ID:** 5114 (Fullmetal Alchemist: Brotherhood), 9253 (Steins;Gate)"
 )
 
@@ -363,10 +413,10 @@ mal_id_input = st.text_input("Masukkan MAL ID anime", "")
 
 if mal_id_input.strip().isdigit():
     mal_id = int(mal_id_input)
-    with st.spinner("Mengambil dan memproses data dari Jikan API..."):
+    with st.spinner("Memproses data dari dataset lokal..."):
         try:
-            anime_data = get_anime_info(mal_id)
-            combined_text, score, studio, genres, title = anime_data
+            anime_data_rec = get_anime_info(mal_id)
+            combined_text, score, studio, genres, title = anime_data_rec
             st.subheader(f"📌 Anime Referensi: {title}")
             input_data = preprocess_input(combined_text, score, studio, genres)
             embedding = encoder.predict(input_data)
@@ -393,13 +443,16 @@ if mal_id_input.strip().isdigit():
             else:
                 # Tampilkan rekomendasi yang sudah dimuat
                 for rec in recommendations:
-                    # Batasi sinopsis hanya 500 kata
+                    # Batasi sinopsis hanya 200 kata
                     synopsis_words = rec['synopsis'].split()
                     limited_synopsis = ' '.join(synopsis_words[:200])
                     st.markdown(f"### {rec['title']}")
                     col1, col2 = st.columns([1, 3])
                     with col1:
-                        st.image(rec["image"], width=150)
+                        if rec["image"] and rec["image"] != "nan":
+                            st.image(rec["image"], width=150)
+                        else:
+                            st.warning("Gambar tidak tersedia")
                     with col2:
                         st.markdown(f"⭐ **Rating:** {rec['score']:.2f} &nbsp;&nbsp;&nbsp; 🔁 **Kemiripan:** {rec['similarity']}%")
                         st.markdown(f"**Studio:** {rec['studio']}")
@@ -408,12 +461,15 @@ if mal_id_input.strip().isdigit():
                         st.markdown(f"**Jumlah Episode:** {rec['episodes']}")
                     with st.expander("Lihat Synopsis"):
                         st.markdown(f"{limited_synopsis}...")
-                    if rec["trailer_url"]:
+                    if rec["trailer_url"] and rec["trailer_url"] != "nan":
                         st.video(rec["trailer_url"])
                     if rec["streaming_links"]:
                         st.markdown("**Streaming:**")
                         for stream in rec["streaming_links"]:
-                            st.markdown(f"- [{stream['name']}]({stream['url']})")
+                            if stream.get('url'):
+                                st.markdown(f"- [{stream['name']}]({stream['url']})")
+                            else:
+                                st.markdown(f"- {stream['name']}")
                     else:
                         st.markdown("_Tidak ada link streaming yang tersedia._")
                     st.markdown("---")
@@ -426,7 +482,7 @@ if mal_id_input.strip().isdigit():
                     st.rerun()
                     
         except Exception as e:
-            st.error(f"Terjadi kesalahan saat mengambil data: {e}")
+            st.error(f"Terjadi kesalahan saat memproses data: {str(e)}")
 
 # ============================
 # Tambahan Styling
