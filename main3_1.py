@@ -34,7 +34,7 @@ def load_resources():
         genre_lst = [line.strip().lower() for line in f.readlines()]
     
     # Load dataset lokal
-    anime_df = pd.read_csv("anime_full_dataset_cleaned.csv")
+    anime_df = pd.read_csv("anime_full_dataset_cleaned_synopsis.csv")
     
     # Konversi kolom yang perlu diubah
     def safe_literal_eval(x):
@@ -50,7 +50,7 @@ def load_resources():
     return encoder_model, tokenizer_, studio_enc, genre_lst, anime_df
 
 encoder, tokenizer, studio_encoder, genre_list, anime_data = load_resources()
-MAX_SEQ_LEN = 1000
+MAX_SEQ_LEN = 256
 
 # ============================
 # Fungsi Membersihkan Teks
@@ -114,13 +114,13 @@ def preprocess_input(text, score, studio, genres):
 # ============================
 def get_anime_info(mal_id):
     anime_url = f"https://api.jikan.moe/v4/anime/{mal_id}"
-    review_url = f"https://api.jikan.moe/v4/anime/{mal_id}/reviews"
+    # review_url = f"https://api.jikan.moe/v4/anime/{mal_id}/reviews"
 
     anime_resp = requests.get(anime_url).json()
     if "data" not in anime_resp or not anime_resp["data"]:
         raise ValueError("Anime tidak ditemukan. Pastikan MAL ID yang dimasukkan benar.")
 
-    review_resp = requests.get(review_url).json()
+    # review_resp = requests.get(review_url).json()
 
     data = anime_resp.get("data", {})
     synopsis = data.get("synopsis", "")
@@ -133,9 +133,9 @@ def get_anime_info(mal_id):
     demo_names = [d.get("name", "").lower() for d in data.get("demographics", [])]
     genres = list(set(genre_names + theme_names + demo_names))
 
-    reviews = [rev["review"] for rev in review_resp.get("data", [])]
-    combined_review = " ".join(reviews) if reviews else ""
-    combined_text = synopsis + " " + combined_review
+    # reviews = [rev["review"] for rev in review_resp.get("data", [])]
+    # combined_review = " ".join(reviews) if reviews else ""
+    combined_text = synopsis
     title = data.get("title", "Unknown")
 
     return combined_text, score, studio, genres, title
@@ -445,7 +445,7 @@ if mal_id_input.strip().isdigit():
                 for rec in recommendations:
                     # Batasi sinopsis hanya 200 kata
                     synopsis_words = rec['synopsis'].split()
-                    limited_synopsis = ' '.join(synopsis_words[:200])
+                    limited_synopsis = ' '.join(synopsis_words[:400])
                     st.markdown(f"### {rec['title']}")
                     col1, col2 = st.columns([1, 3])
                     with col1:
@@ -482,7 +482,7 @@ if mal_id_input.strip().isdigit():
                     st.rerun()
                     
         except Exception as e:
-            st.error(f"Terjadi kesalahan saat memproses data: {str(e)}")
+            st.error(f"Terjadi kesalahan saat memproses data: tolong reload halaman")
 
 # ============================
 # Tambahan Styling

@@ -1,21 +1,15 @@
-(Female)
-(Male)
 Action
-Adult
+Adult Cast
 Adventure
 Anthropomorphic
-Arts
-Avant
-Award
-Boys
+Avant Garde
+Award Winning
+Boys Love
 CGDCT
-Cast
 Childcare
-Combat
+Combat Sports
 Comedy
-Crime
 Crossdressing
-Culture
 Delinquents
 Detective
 Drama
@@ -23,74 +17,62 @@ Ecchi
 Educational
 Erotica
 Fantasy
-Gag
-Game
-Garde
-Girls
+Gag Humor
+Girls Love
 Gore
 Gourmet
 Harem
 Hentai
-High
+High Stakes Game
 Historical
 Horror
-Humor
-Idols
+Idols (Female)
+Idols (Male)
 Isekai
 Iyashikei
 Josei
 Kids
-Life
-Love
-Magical
-Mahou
-Martial
+Love Polygon
+Love Status Quo
+Magical Sex Shift
+Mahou Shoujo
+Martial Arts
 Mecha
 Medical
 Military
 Music
 Mystery
 Mythology
-Organized
-Otaku
+Organized Crime
+Otaku Culture
 Parody
-Performing
+Performing Arts
 Pets
-Polygon
-Power
 Psychological
-Quo
 Racing
 Reincarnation
-Reverse
+Reverse Harem
 Romance
 Samurai
 School
 Sci-Fi
 Seinen
-Sex
-Shift
 Shoujo
 Shounen
 Showbiz
-Slice
+Slice of Life
 Space
 Sports
-Stakes
-Status
-Strategy
-Super
+Strategy Game
+Super Power
 Supernatural
 Survival
 Suspense
-Team
-Time
-Travel
-Urban
+Team Sports
+Time Travel
+Urban Fantasy
 Vampire
-Video
+Video Game
 Villainess
-Visual
-Winning
+Visual Arts
 Workplace
-of
